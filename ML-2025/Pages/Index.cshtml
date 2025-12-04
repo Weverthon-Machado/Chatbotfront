@@ -1,0 +1,138 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Chatbot Web";
+}
+
+<div class="text-center mb-4">
+    <h1 class="display-5">🤖 ChatBot Web</h1>
+    <p>Converse com o assistente. As interações serão salvas em JSON.</p>
+</div>
+
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                Chat
+            </div>
+
+            <div class="card-body" style="height: 360px; overflow-y: auto;" id="chat-window">
+                <p class="text-muted">Envie sua primeira mensagem para começar.</p>
+            </div>
+
+            <div class="card-footer">
+                <div class="input-group">
+                    <input id="inputText" class="form-control" placeholder="Digite sua mensagem..." />
+                    <button id="sendBtn" class="btn btn-primary">Enviar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+    const chatWindow = document.getElementById("chat-window");
+    const input = document.getElementById("inputText");
+    const sendBtn = document.getElementById("sendBtn");
+
+    function addUserMessage(text) {
+        const div = document.createElement("div");
+        div.className = "mb-3 text-end";
+        div.innerHTML = `
+            <div class="d-inline-block p-2 rounded bg-light border">
+                <strong>Você:</strong> ${text}
+            </div>`;
+        chatWindow.appendChild(div);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+    }
+
+    function addBotMessage(text, id, probability, prediction) {
+        const div = document.createElement("div");
+        div.className = "mb-3 text-start";
+
+        const sentiment = prediction ? "Positivo 👍" : "Negativo 👎";
+        const prob = (probability * 100).toFixed(1);
+
+        div.innerHTML = `
+            <div class="d-inline-block p-2 rounded bg-primary text-white">
+                <strong>Chatbot:</strong> ${text}<br/>
+                <small>Detecção: ${sentiment} • Confiança: ${prob}%</small>
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-outline-light me-2" data-id="${id}" data-useful="true">👍 Útil</button>
+                    <button class="btn btn-sm btn-outline-light" data-id="${id}" data-useful="false">👎 Não útil</button>
+                </div>
+            </div>`;
+
+        chatWindow.appendChild(div);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+
+        div.querySelectorAll("button[data-id]").forEach(btn => {
+            btn.addEventListener("click", async (e) => {
+                const id = e.target.getAttribute("data-id");
+                const useful = e.target.getAttribute("data-useful") === "true";
+
+                try {
+                    await fetch("/Index?handler=PostFeedback", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ id, useful })
+                    });
+
+                    e.target.disabled = true;
+                    e.target.innerText = useful ? "Obrigado 👍" : "Registrado";
+
+                } catch (err) {
+                    console.error("Erro no feedback:", err);
+                }
+            });
+        });
+    }
+
+    sendBtn.addEventListener("click", async () => {
+
+        const text = input.value.trim();
+        if (!text) return;
+
+        addUserMessage(text);
+        input.value = "";
+
+        try {
+            const res = await fetch("/Index", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ InputText: text })
+            });
+
+            const data = await res.json();
+
+            if (!res.ok || data.error) {
+                addBotMessage("Erro ao processar sua mensagem. Tente novamente.", "err", 0, false);
+                return;
+            }
+
+            addBotMessage(
+                data.botText ?? "Resposta gerada",
+                data.id,
+                data.probability ?? 0,
+                data.prediction ?? false
+            );
+
+        } catch (err) {
+            console.error(err);
+            addBotMessage("Erro ao conectar ao servidor.", "err", 0, false);
+        }
+    });
+
+    input.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            sendBtn.click();
+        }
+    });
+
+});
+</script>
+}
